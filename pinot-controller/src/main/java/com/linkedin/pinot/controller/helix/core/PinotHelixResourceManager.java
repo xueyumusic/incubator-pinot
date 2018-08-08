@@ -2173,6 +2173,10 @@ public class PinotHelixResourceManager {
     return endpointToInstance;
   }
 
+  public boolean isPartitionLeader(int partitionNum) {
+    return true;
+  }
+
   /*
    * Uncomment and use for testing on a real cluster
 
