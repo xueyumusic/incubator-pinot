@@ -93,6 +93,7 @@
     <dependency>
       <groupId>org.openjdk.jmh</groupId>
       <artifactId>jmh-core</artifactId>
+      <version>1.15</version>
       <exclusions>
         <exclusion>
           <groupId>net.sf.jopt-simple</groupId>
@@ -101,13 +102,14 @@
       </exclusions>
     </dependency>
     <dependency>
-      <groupId>net.sf.jopt-simple</groupId>
-      <artifactId>jopt-simple</artifactId>
-    </dependency>
-    <dependency>
       <groupId>org.openjdk.jmh</groupId>
       <artifactId>jmh-generator-annprocess</artifactId>
+      <version>1.15</version>
       <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>net.sf.jopt-simple</groupId>
+      <artifactId>jopt-simple</artifactId>
     </dependency>
   </dependencies>
   <build>
