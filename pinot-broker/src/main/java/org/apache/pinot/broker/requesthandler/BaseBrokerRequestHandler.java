@@ -22,7 +22,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -45,21 +44,16 @@ import org.apache.pinot.common.exception.QueryException;
 import org.apache.pinot.common.metrics.BrokerMeter;
 import org.apache.pinot.common.metrics.BrokerMetrics;
 import org.apache.pinot.common.metrics.BrokerQueryPhase;
-import org.apache.pinot.common.request.AggregationInfo;
 import org.apache.pinot.common.request.BrokerRequest;
 import org.apache.pinot.common.request.FilterOperator;
 import org.apache.pinot.common.request.FilterQuery;
 import org.apache.pinot.common.request.FilterQueryMap;
-import org.apache.pinot.common.request.GroupBy;
-import org.apache.pinot.common.request.Selection;
-import org.apache.pinot.common.request.transform.TransformExpressionTree;
 import org.apache.pinot.common.response.BrokerResponse;
 import org.apache.pinot.common.response.broker.BrokerResponseNative;
 import org.apache.pinot.common.utils.CommonConstants;
 import org.apache.pinot.common.utils.request.FilterQueryTree;
+import org.apache.pinot.common.utils.request.RequestInfo;
 import org.apache.pinot.common.utils.request.RequestUtils;
-import org.apache.pinot.core.query.aggregation.function.AggregationFunctionType;
-import org.apache.pinot.core.query.aggregation.function.AggregationFunctionUtils;
 import org.apache.pinot.core.query.reduce.BrokerReduceService;
 import org.apache.pinot.pql.parsers.Pql2Compiler;
 import org.slf4j.Logger;
@@ -350,8 +344,10 @@ public abstract class BaseBrokerRequestHandler implements BrokerRequestHandler {
       String tableName = brokerRequest.getQuerySource().getTableName();
       Schema schema = _tableSchemaCache.getIfTableSchemaPresent(tableName);
       if (schema != null) {
-        Set<String> columnsFromBrokerRequest = getAllColumnsFromBrokerRequest(brokerRequest, filterQueryTree);
-        // Filters out virtual columns in the query.
+        RequestInfo requestInfo = RequestUtils.preComputeRequestInfo(brokerRequest);
+        // gets all the columns from broker request
+        Set<String> columnsFromBrokerRequest = requestInfo.getAllColumns();
+        // filters out virtual columns in the query.
         columnsFromBrokerRequest.removeIf(column -> column.startsWith("$"));
         columnsFromBrokerRequest.removeAll(schema.getColumnNames());
         if (!columnsFromBrokerRequest.isEmpty()) {
@@ -359,55 +355,13 @@ public abstract class BaseBrokerRequestHandler implements BrokerRequestHandler {
           throw new RuntimeException(
               "Found non-existent columns from the query: " + columnsFromBrokerRequest.toString());
         }
+        // reduces the time of fetching filter query tree, which'd be used in optimization part.
+        filterQueryTree[0] = requestInfo.getFilterQueryTree();
       } else {
         // If the cache doesn't have the schema, loads the schema to the cache asynchronously.
         _tableSchemaCache.refreshTableSchema(tableName);
       }
     }
-  }
-
-  /**
-   * Helper to get all the columns from broker request.
-   * Returns the set of all the columns.
-   */
-  private Set<String> getAllColumnsFromBrokerRequest(BrokerRequest brokerRequest, FilterQueryTree[] filterQueryTree) {
-    Set<String> allColumns = new HashSet<>();
-    // Filter
-    filterQueryTree[0] = RequestUtils.generateFilterQueryTree(brokerRequest);
-    if (filterQueryTree[0] != null) {
-      allColumns.addAll(RequestUtils.extractFilterColumns(filterQueryTree[0]));
-    }
-
-    // Aggregation
-    List<AggregationInfo> aggregationsInfo = brokerRequest.getAggregationsInfo();
-    if (aggregationsInfo != null) {
-      Set<TransformExpressionTree> _aggregationExpressions = new HashSet<>();
-      for (AggregationInfo aggregationInfo : aggregationsInfo) {
-        if (!aggregationInfo.getAggregationType().equalsIgnoreCase(AggregationFunctionType.COUNT.getName())) {
-          _aggregationExpressions.add(
-              TransformExpressionTree.compileToExpressionTree(AggregationFunctionUtils.getColumn(aggregationInfo)));
-        }
-      }
-      allColumns.addAll(RequestUtils.extractColumnsFromExpressions(_aggregationExpressions));
-    }
-
-    // Group-by
-    GroupBy groupBy = brokerRequest.getGroupBy();
-    if (groupBy != null) {
-      Set<TransformExpressionTree> groupByExpressions = new HashSet<>();
-      for (String expression : groupBy.getExpressions()) {
-        groupByExpressions.add(TransformExpressionTree.compileToExpressionTree(expression));
-      }
-      allColumns.addAll(RequestUtils.extractColumnsFromExpressions(groupByExpressions));
-    }
-
-    // Selection
-    Selection selection = brokerRequest.getSelections();
-    if (selection != null) {
-      allColumns.addAll(RequestUtils.extractSelectionColumns(selection));
-    }
-
-    return allColumns;
   }
 
   /**
